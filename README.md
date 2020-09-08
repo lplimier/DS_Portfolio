@@ -8,4 +8,12 @@
 
 - **keywords**()
 
-## [Thank You, Senator]()
+## [Thank You, Senator: Predicting Politicians’ Gender from Responses to their Facebook Posts](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Thank_You_Senator)
+
+- **keywords**()
+
+## [Over? Simplifying Direct Democracy: Effects of Additional Information on Ballot Measure Voting](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Direct_Democracy)
+
+- **keywords**()
+
+## [BopBot - The AI Dancer](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Bop_Bot)
