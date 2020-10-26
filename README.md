@@ -5,6 +5,7 @@
 ![Alt Text](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/EasterEgg.gif)
 
 - Created a simple game in Python
+- Player navigates through rooms in a bakery to complete customer orders and get points!
 - **keywords**(Object Oriented Programming, Python)
 
 ## [What Scientists Have Wikipedia Pages: As study of the missing scientists](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Wiki_Gender)
