@@ -1,6 +1,6 @@
 This game was created as part of the UC Berkeley MIDS Python course and was selected as one of the [top five projects](https://github.com/UCB-INFO-PYTHON/MIDS_python_showcase) for the term. 
 
-The general idea for the game is that the player is attempting to advance from Novice to Master Pastry Chef by taking cake orders and successfully completing them. The player moves between rooms and completes tasks in a particular sequence to successfully fulfill a cake or cookie order. Points are awarded for success and subtracted for mistakes.
+The general idea for the game is that the player is attempting to advance from Novice to Master Pastry Chef by taking cake orders and successfully completing them. The player moves between rooms and completes tasks in a particular sequence to successfully fulfill a cake order. Points are awarded for success and subtracted for mistakes.
 
 This is mostly a simple memory game. The player needs to remember the order in an effort to make fewer mistakes and avoid losing points. There is also an order of operations component to the game, but once a player completes one or two orders, this part should be pretty clear. 
 
