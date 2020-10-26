@@ -2,7 +2,10 @@
 
 ## [Pastry Chef Game](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Pastry_Chef_Game)
 
-- **keywords**(Object Oriented Programming)
+**NOTE** Add gif of breaking egg
+
+- Created a simple game in Python
+- **keywords**(Object Oriented Programming, Python)
 
 ## [What Scientists Have Wikipedia Pages: As study of the missing scientists](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Wiki_Gender)
 
