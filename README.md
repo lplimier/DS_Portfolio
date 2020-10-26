@@ -2,7 +2,7 @@
 
 ## [Pastry Chef Game](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Pastry_Chef_Game)
 
-**NOTE** Add gif of breaking egg
+![Alt Text](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/EasterEgg.gif)
 
 - Created a simple game in Python
 - **keywords**(Object Oriented Programming, Python)
