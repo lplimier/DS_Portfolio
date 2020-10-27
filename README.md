@@ -18,10 +18,20 @@
 
 ## [Thank You, Senator: Predicting Politicians’ Gender from Responses to their Facebook Posts](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Thank_You_Senator)
 
-- **keywords**()
+![Problem Setup](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/Figure1.png)
+
+- Used CNN model to predict the gender of politicians based on how people responded to the politicians' posts on Facebook
+- Explored adding sentiment analysis as a feature
+- **keywords**(Natural Language Processing, Convolutional Neural Networks, Sentiment Analysis, LaTex)
 
 ## [Over? Simplifying Direct Democracy: Effects of Additional Information on Ballot Measure Voting](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Direct_Democracy)
 
-- **keywords**()
+![Ballot Measure Support](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/DistributionOfSupport.png)
+
+- Studied the effects of additional information provided to voters on the level of support for ballot measures
+- Used Qualtrics to administer a precisely designed experiment
+- Analyzed survey results in R to obtain effect size of treatment condition (in this case, the provision of additional information)
+- Used linear regression to explore the treatment effect and influence of covariates
+- **keywords**(Randomized Control Trial, Experimental Design, Power, R, Regression, Covariates)
 
 ## [BopBot - The AI Dancer](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Bop_Bot)
