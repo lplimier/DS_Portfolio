@@ -53,4 +53,5 @@
 
 - Used OpenPose model and language modeling to create novel dance choreography
 - Trained KMeans and GPT2 language models on keypoints from video data
+- Selected as one of top eight projects for MIDS Capstone Showcase
 - **keywords**(GPT2, Deep Learning, Video Processing, Language Models, K-Means, Python)
