@@ -1,5 +1,8 @@
+*****
+
 # Data Science Portfolio
 
+*****
 *****
 
 ## [Pastry Chef Game](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Pastry_Chef_Game)
@@ -45,3 +48,9 @@
 *****
 
 ## [BopBot - The AI Dancer](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Bop_Bot)
+
+![HipHopGPT2](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/hiphip-gpt2.gif)
+
+- Used OpenPose model and language modeling to create novel dance choreography
+- Trained KMeans and GPT2 language models on keypoints from video data
+- **keywords**(GPT2, Deep Learning, Video Processing, Language Models, K-Means, Python)
