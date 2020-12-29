@@ -1,6 +1,9 @@
 *****
+*****
 
 # Data Science Portfolio
+
+#### [Lorrel Plimier](https://www.linkedin.com/in/lorrel-plimier-b117284a/)
 
 *****
 *****
