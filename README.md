@@ -21,7 +21,7 @@
 
 ## [Over? Simplifying Direct Democracy: Effects of Additional Information on Ballot Measure Voting](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Direct_Democracy)
 
-<img src="https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/DistributionOfSupport.png" width="500">
+<img src="https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/DistributionOfSupport.png" width="600">
 
 - Studied the effects of additional information provided to voters on the level of support for ballot measures
 - Used Qualtrics to administer a precisely designed experiment
@@ -33,7 +33,7 @@
 
 ## [Thank You, Senator: Predicting Politicians’ Gender from Responses to their Facebook Posts](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Thank_You_Senator)
 
-![Problem Setup](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/Figure1.png)
+<img src="https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/Figure1.png" width="200">
 
 - Used CNN model to predict the gender of politicians based on how people responded to the politicians' posts on Facebook
 - Explored adding sentiment analysis as a feature
