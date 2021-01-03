@@ -21,7 +21,7 @@
 
 ## [Over? Simplifying Direct Democracy: Effects of Additional Information on Ballot Measure Voting](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Direct_Democracy)
 
-![Ballot Measure Support](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/DistributionOfSupport.png)
+<img src="https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/DistributionOfSupport.png" width="200">
 
 - Studied the effects of additional information provided to voters on the level of support for ballot measures
 - Used Qualtrics to administer a precisely designed experiment
