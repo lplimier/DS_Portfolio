@@ -33,7 +33,7 @@
 
 ## [Thank You, Senator: Predicting Politicians’ Gender from Responses to their Facebook Posts](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Thank_You_Senator)
 
-<img src="https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/Figure1.png" width="200">
+<img src="https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/Figure1.png" width="300">
 
 - Used CNN model to predict the gender of politicians based on how people responded to the politicians' posts on Facebook
 - Explored adding sentiment analysis as a feature
