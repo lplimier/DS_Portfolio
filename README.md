@@ -43,7 +43,7 @@
 
 ## [What Scientists Have Wikipedia Pages: As study of the missing scientists](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Wiki_Gender)
 
-![Scientists Published Papers](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/published_continent_gender.png =250x)
+![Scientists Published Papers](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/published_continent_gender.png)
 
 - Analysis of dataset of computer scientists
 - Explored correlation between gender and other characteristics of the scientists and whether the scientists have Wikipedia pages
