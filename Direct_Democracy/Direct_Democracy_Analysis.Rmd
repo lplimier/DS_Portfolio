@@ -1,0 +1,1246 @@
+---
+title: "Direct Democracy Analysis"
+author: "Lorrel Plimier"
+output:
+  # pdf_document:
+  html_document:
+    df_print: paged
+---
+```{r load_packages, results='hide', warning=FALSE} 
+# load packages 
+library(data.table)
+library(foreign)
+library(lmtest)
+library(multiwayvcov)
+library(sandwich)
+library(stargazer)
+library(pwr)
+library(ggplot2)
+library(tidyverse)
+# library(cobalt)
+
+```
+
+## Import Data
+
+```{r import_data}
+#Load the raw survey data.
+# raw <- fread("rrrockTheVote_final_2020_04_05_16.29.csv")
+raw <- fread("rrrockTheVote_final_2020_04_12_22.03P.csv")
+#Remove the first two rows that have descriptive data.
+raw <- raw[-c(1,2)]
+#Load the appended data (with columns from python API)
+appended <- fread("apr12_cleaned_appended.csv", select = c("responseId", "displayOrder",
+                                                          "timeParole", "timeAmb", "timeClinic",
+                                                          "state", "country"))
+
+pilot_raw <- fread("rrrockTheVote_pilot_2020_03_09_14.44.csv")
+pilot_raw <- pilot_raw[-c(1,2)]
+
+nrow(raw)
+```
+
+## Clean Data and Rename Variables
+
+The following chunk saves and renames only the data that we intend to use. [So far, there is no timing or order of presentation data here.]
+
+```{r subset_data}
+#Keep and rename just the variables we want.
+final_sm <- raw[, list(progress = as.numeric(Progress), 
+                       disclaimerTime = as.numeric(time.disclaimer_PageSubmit),
+                       age = as.numeric(age), 
+                       gender, 
+                       education,
+                       income, 
+                       voting = votingHabits, 
+                       party,
+                       partyDetails = as.factor(party_4_TEXT),
+                       partyStrength = party_strength,
+                       parole_Control = as.numeric(parole_0.0_1),
+                       ambulance_Control = as.numeric(ambulance_0.0_1), 
+                       clinic_Control = as.numeric(clinic_0.0_1),
+                       parole_Tx = as.numeric(parole_1.0_1),
+                       ambulance_Tx = as.numeric(ambulance_1.0_1),
+                       clinic_Tx = as.numeric(clinic_1.0_1),
+                       randomizer = as.numeric(rand),
+                       responseId = ResponseId)]
+
+#Merge the appended columns from python API.
+final_sm <- merge(final_sm,appended, by = "responseId")
+summary(final_sm)
+```
+
+```{r CleanPilotDate}
+
+pilot_sm <- pilot_raw[, list(age = as.numeric(age_1),
+                             gender,
+                             education,
+                             income,
+                             voting = votingHabits,
+                             party = Q25,
+                             partyDatails = as.factor(Q25_4_TEXT),
+                             partyStrength = Q28,
+                             parole_Control = as.numeric(parole_0.0_1),
+                             clinic_Control = as.numeric(clinic_0.0_1),
+                             ambulance_Control = as.numeric(ambulance_0.0_1),
+                             parole_Tx = as.numeric(parole_0.2_1),
+                             clinic_Tx = as.numeric(clinic_0.2_1),
+                             ambulance_Tx = as.numeric(ambulance_0.2_1),
+                             randomizer = as.numeric(rand),
+                             responseId = ResponseId)]
+
+pilot_sm[, treat := ifelse(randomizer <= 0.5, 0, 1)]
+
+pilot_sm[, parole_Support := ifelse(is.na(parole_Control), parole_Tx, parole_Control)]
+pilot_sm[, ambulance_Support := ifelse(is.na(ambulance_Control), ambulance_Tx, ambulance_Control)]
+pilot_sm[, clinic_Support := ifelse(is.na(clinic_Control), clinic_Tx, clinic_Control)]
+
+pilot_sm
+```
+
+- Create the treatment (`treat`) variable using `rand`, which we used in Qualtics for assignment; `rand` <= 0.5 to control, `rand` > 0.5 to treatment. 
+- Drop the subjects who never made it into treatment or control (i.e., never made it past the demographics data and disclaimer page.) This is a value of 13% progress in Qualtics. 
+- Combine the treatment and control outcome for each question type. You can subsequently identify who was in T/C by looking at the `treat` variable. 
+- Create an attrition variable for people who dropped out after being given the first substantive question (after submitting the disclaimer page.) This shows up as NA for the three new outcome variables.
+- Make `party_strength` easier to use by shortening answers to `lean`, `moderate`, `strong`.
+
+```{r data_cleaning}
+#Create treatment variable.
+final_sm[, treat := ifelse(randomizer <= 0.5, 0, 1)]
+#Drop the subjects who never submitted disclaimer page. (random attritors)
+final_sm <- final_sm[is.na(disclaimerTime) != T]
+#Convert the outcome variable to combine T/C.
+final_sm[, parole_Support := ifelse(is.na(parole_Control), parole_Tx, parole_Control)]
+final_sm[, ambulance_Support := ifelse(is.na(ambulance_Control), ambulance_Tx, ambulance_Control)]
+final_sm[, clinic_Support := ifelse(is.na(clinic_Control), clinic_Tx, clinic_Control)]
+#Add attrition variable for each of the six questions
+final_sm[, parole_Attrite := ifelse(is.na(parole_Support), 1, 0)]
+final_sm[, ambulance_Attrite := ifelse(is.na(ambulance_Support), 1, 0)]
+final_sm[, clinic_Attrite := ifelse(is.na(clinic_Support), 1, 0)]
+#Shorten/order partyStrength, education, income and voting habits.
+final_sm[, partyStrength := ifelse(partyStrength == "I lean '${q://QID75/ChoiceGroup/SelectedChoicesTextEntry}'", "lean",
+                                    ifelse(partyStrength == "I identify strongly as a '${q://QID75/ChoiceGroup/SelectedChoicesTextEntry}'", "strong", "moderate"))]
+final_sm[, education := ifelse(education == "Have not completed high school","1: < high school",
+                               ifelse(education == "Obtained a high school degree", "2: high school",
+                                      ifelse(education == "Pursued some college studies", "3: some college",
+                                             ifelse(education == "Obtained a college degree", "4: college degree",
+                                                    ifelse(education == "Pursued some post-graduate studies", "5: some post-grad",
+                                                           ifelse(education == "Obtained a post-graduate degree", "6: graduate degree",""))))))]
+
+final_sm[, voting := ifelse(voting == "I have never voted for public office", "1: never vote",
+                            ifelse(voting == "I vote in presidential elections", "2: every 4 years",
+                                   ifelse(voting == "I vote in presidential and midterm elections", "3: every 2 years",
+                                          ifelse(voting == "I vote in presidential, midterm, and local elections", "4: always vote",""))))]
+final_sm[, income := ifelse(income == "less than $50,000 per year","1: under $50k",
+                            ifelse(income == "more than $50,000 but less than $100,000 per year", "2: $50k to $100k",
+                                   ifelse(income == "more than $100,000 per year","3: over $100k","")))]
+
+#Create bins for timing variables (for later boxplots)
+final_sm[,timeParole_bins := ifelse(timeParole <= 20, "1: under 20",
+                                    ifelse(timeParole > 20 & timeParole <= 40, "2: 20-40",
+                                           ifelse(timeParole > 40 & timeParole <= 60, "3: 40-60",
+                                                  ifelse(timeParole > 60, "4: over 60",""))))]
+final_sm[,timeAmb_bins := ifelse(timeAmb <= 20, "1: under 20",
+                                    ifelse(timeAmb > 20 & timeAmb <= 40, "2: 20-40",
+                                           ifelse(timeAmb > 40 & timeAmb <= 60, "3: 40-60",
+                                                  ifelse(timeAmb > 60, "4: over 60",""))))]
+final_sm[,timeClinic_bins := ifelse(timeClinic <= 20, "1: under 20",
+                                    ifelse(timeClinic > 20 & timeClinic <= 40, "2: 20-40",
+                                           ifelse(timeClinic > 40 & timeClinic <= 60, "3: 40-60",
+                                                  ifelse(timeClinic > 60, "4: over 60",""))))]
+ 
+#Convert ordered variables to factors.
+final_sm[, partyStrength := as.factor(partyStrength)]
+final_sm[, education := as.factor(education)]
+final_sm[, voting := as.factor(voting)]
+final_sm[, income := as.factor(income)]
+final_sm[, party := as.factor(party)]
+final_sm[, gender := as.factor(gender)]
+final_sm[, timeParole_bins := as.factor(timeParole_bins)]
+final_sm[, timeAmb_bins := as.factor(timeAmb_bins)]
+final_sm[, timeClinic_bins := as.factor(timeClinic_bins)]
+         
+summary(final_sm)
+
+```
+
+## Attrition Analysis
+
+Overall, it looks like we have a greater percentage of attritors for treatment than for control. (18-19% vs. 10-14% depending on the question) This is not surprising to me given that some of the information in the treatment was specific to the US, e.g., names of organizations, etc. I got direct feedback from some that they tried, but couldn't answer the questions because they were not US citizens and didn't live in the US. I would think those people would attrite. I'm not sure what else about the treatment would cause people to attrite other than that it becomes more obvious that there is partisanship in the endorsers/contributors and this may make people feel uncomfortable and want to quit. The text of the measures themselves (ie, the control) is much more dry and unobjectionable on its face. The attrition is not significantly different between the two groups.
+
+```{r attition_analysis}
+final_sm[, .(count = .N), keyby = .(parole_Attrite,treat)]
+final_sm[, .(count = .N), keyby = .(ambulance_Attrite,treat)]
+final_sm[, .(count = .N), keyby = .(clinic_Attrite,treat)]
+
+control_attriters <- final_sm[treat == 0, clinic_Attrite]
+treat_attriters <- final_sm[treat == 1, clinic_Attrite]
+
+t.test(control_attriters,treat_attriters)
+
+```
+
+Do the same thing as above, but this time with blocking included. I'm setting up a new `block` variable with `1-6` defined below:
+
+1. Democrat + low ed level
+2. Democrat + high ed level
+3. Republican + low ed level
+4. Republican + high ed level
+5. Other + low ed level
+6. Other + high ed level
+
+```{r attrition_analysis_blocking}
+#First, create two interim variables to simplify the current demographic info.
+final_sm[, blockParty := ifelse(party == "Democrat", "dem",
+                                 ifelse(party == "Republican", "rep", "other"))]
+final_sm[, blockEd := ifelse(education == "1: < high school" | education == "2: high school" | education == "3: some college", "low_ed", "high_ed")]
+#Create the block variable with the 1-6 as defined in above text.
+final_sm[, block := ifelse(blockParty == "dem" & blockEd == "low_ed", 1,
+                           ifelse(blockParty == "dem" & blockEd == "high_ed",2,
+                                  ifelse(blockParty == "rep" & blockEd == "low_ed",3,
+                                         ifelse(blockParty == "rep" & blockEd == "high_ed",4,
+                                                ifelse(blockParty == "other" & blockEd == "low_ed",5,6)))))]
+
+final_sm[, .(count = .N), keyby = .(block,parole_Attrite,treat)]
+final_sm[, .(count = .N), keyby = .(block,ambulance_Attrite,treat)]
+final_sm[, .(count = .N), keyby = .(block,clinic_Attrite,treat)]
+
+final_sm[, .(count = .N), keyby = .(block, treat)]
+final_sm[, .(pct_treat = mean(treat), pct_ctrl = 1-mean(treat)), keyby = .(block)]
+# summary(final_sm )
+```
+
+The attrition appears more evenly dispersed among the blocks. 
+
+```{r blockedAttrition_ttest}
+block1_attrit_C <- final_sm[treat == 0 & block == 1, clinic_Attrite]
+block1_attrit_T <- final_sm[treat == 1 & block == 1, clinic_Attrite]
+t.test(block1_attrit_C,block1_attrit_T)
+
+block2_attrit_C <- final_sm[treat == 0 & block == 2, clinic_Attrite]
+block2_attrit_T <- final_sm[treat == 1 & block == 2, clinic_Attrite]
+t.test(block2_attrit_C,block2_attrit_T)
+
+block3_attrit_C <- final_sm[treat == 0 & block == 3, clinic_Attrite]
+block3_attrit_T <- final_sm[treat == 1 & block == 3, clinic_Attrite]
+t.test(block3_attrit_C,block3_attrit_T)
+
+block4_attrit_C <- final_sm[treat == 0 & block == 4, clinic_Attrite]
+block4_attrit_T <- final_sm[treat == 1 & block == 4, clinic_Attrite]
+t.test(block4_attrit_C,block4_attrit_T)
+
+block5_attrit_C <- final_sm[treat == 0 & block == 5, clinic_Attrite]
+block5_attrit_T <- final_sm[treat == 1 & block == 5, clinic_Attrite]
+t.test(block5_attrit_C,block5_attrit_T)
+
+block6_attrit_C <- final_sm[treat == 0 & block == 6, clinic_Attrite]
+block6_attrit_T <- final_sm[treat == 1 & block == 6, clinic_Attrite]
+t.test(block6_attrit_C,block6_attrit_T)
+
+```
+
+
+## Demographic EDA and Covariate Checks
+
+Explore some of the demographic information.
+
+```{r eda_demographics}
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(education,treat)]
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(gender,treat)]
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(party,treat)]
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(partyStrength,treat)]
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(party,partyStrength,treat)]
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(income,treat)]
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(voting,treat)]
+final_sm[, .(count = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = .(block,treat)]
+
+```
+
+```{r}
+parole_only <- final_sm[,c("parole_Support", "treat")]
+final_sm[, .(count = .N), keyby = .(parole_Support, treat)]
+parole_only[parole_Support > 0, .(count = .N), keyby = .(treat)]
+final_sm[parole_Support > 0, .(count = .N), keyby = .(party, parole_Support)]
+```
+
+
+```{r create stateBin}
+unique(final_sm$state)
+
+states <- final_sm[, .(num_in_state = .N, mean_support_parole = mean(parole_Support, na.rm = T),
+             mean_support_ambulance = mean(ambulance_Support, na.rm = T),
+             mean_support_clinic = mean(clinic_Support, na.rm = T)), keyby = state]
+states <- states[order(-num_in_state)]
+states[, state_bin := ifelse(num_in_state > 10,state,"other")]
+statesFinal <- states[, .(state, state_bin)]
+statesFinal
+#Merge the state bin back into the main dataset.
+final_sm <- merge(final_sm,statesFinal,by = "state")
+
+```
+
+### Covariate Balance checks
+
+```{r CovariateBalance_Ttest}
+
+covariate_data <- final_sm[,list(treat,age,gender,education,income,voting,party)]
+mod_null <- lm(treat ~ 1, data = na.omit(covariate_data))
+mod_covariate <-final_sm[, lm(treat ~ 1 + age + gender + education + income + voting + party)]
+summary(mod_covariate)
+anova(mod_covariate, mod_null, test= 'F')
+
+```
+
+
+### Distribution of Data in T/C
+
+```{r histogram_TC_byMeasure}
+
+ggplot(final_sm, aes(x=parole_Support)) +
+  geom_histogram(data = final_sm[treat == 0], fill = "coral2", alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = final_sm[treat == 1], fill = "darkturquoise", alpha = 0.5, binwidth = 2.5)
+
+ggplot(final_sm, aes(x=ambulance_Support)) +
+  geom_histogram(data = final_sm[treat == 0], fill = "chocolate4", alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = final_sm[treat == 1], fill = "darkorchid", alpha = 0.5, binwidth = 2.5)
+
+ggplot(final_sm, aes(x=clinic_Support)) +
+  geom_histogram(data = final_sm[treat == 0], fill = "darkorange2", alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = final_sm[treat == 1], fill = "aquamarine3", alpha = 0.5, binwidth = 2.5)
+
+```
+
+```{r histogram_TC_byMeasure_pilot}
+
+ggplot(pilot_sm, aes(x=parole_Support)) +
+  geom_histogram(data = pilot_sm[treat == 0], fill = "coral2", alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = pilot_sm[treat == 1], fill = "darkturquoise", alpha = 0.5, binwidth = 2.5)
+
+ggplot(pilot_sm, aes(x=ambulance_Support)) +
+  geom_histogram(data = pilot_sm[treat == 0], fill = "chocolate4", alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = pilot_sm[treat == 1], fill = "darkorchid", alpha = 0.5, binwidth = 2.5)
+
+ggplot(pilot_sm, aes(x=clinic_Support)) +
+  geom_histogram(data = pilot_sm[treat == 0], fill = "darkorange2", alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = pilot_sm[treat == 1], fill = "aquamarine3", alpha = 0.5, binwidth = 2.5)
+
+```
+
+See if plotting some of the covariates makes for easier interpretation. These plots will at least show the IQranges.
+
+```{r plot_covariates_ed_byMeasure}
+ggplot(final_sm, aes(factor(education), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Education") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Education", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(education), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Education") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Education", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(education), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Education") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Education", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+
+
+```{r plot_covariates_party_by measure}
+ggplot(final_sm, aes(factor(party), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Party") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Party", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(party), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Party") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Party", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(party), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Party") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Party", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+```{r plot_covariates_voting_byMeasure}
+ggplot(final_sm, aes(factor(voting), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Voting Habits") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Voting Habits", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(voting), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Voting Habits") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Voting Habits", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(voting), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Voting Habits") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Voting Habits", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+```{r plot_covariates_block}
+ggplot(final_sm, aes(factor(block), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Assignment Block") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Block\n1: Dem + LowEd; 2: Dem + HighEd; 3: Rep + LowEd\n4: Rep + HighEd, 5: Other + LowEd; 6: Other + HighEd", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(block), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Assignment Block") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Block\n1: Dem + LowEd; 2: Dem + HighEd; 3: Rep + LowEd\n4: Rep + HighEd, 5: Other + LowEd; 6: Other + HighEd", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(block), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Assignment Block") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Block\n1: Dem + LowEd; 2: Dem + HighEd; 3: Rep + LowEd\n4: Rep + HighEd, 5: Other + LowEd; 6: Other + HighEd", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+>For Ambulance and Clinic, the treatment caused an opposite effect for low education level vs. high education level
+
+```{r plot_covariates_gender}
+ggplot(final_sm, aes(factor(gender), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Gender") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Gender", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(gender), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Gender") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Gender", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(gender), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Gender") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Gender", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+```{r plot_covariate_displayOrder}
+ggplot(final_sm, aes(factor(displayOrder), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Display Order") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Gender", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(displayOrder), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Display Order") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Gender", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(displayOrder), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Display Order") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Gender", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+```{r plot_covariate_timeSpent}
+summary(final_sm$timeParole)
+
+ggplot(final_sm, aes(factor(timeParole_bins), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Time Spent") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Time Spent", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(timeAmb_bins), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Time Spent") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Time Spent", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(timeClinic_bins), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Time Spent") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Time Spent", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+```{r plot_covariate_partyStrength}
+summary(final_sm$timeParole)
+
+ggplot(final_sm, aes(factor(partyStrength), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by Party Strength") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Party Strength", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(partyStrength), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by Party Strength") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Party Strength", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(partyStrength), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by Party Strength") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "Party Strength", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+```{r plot_covariate_state}
+
+ggplot(final_sm, aes(factor(state_bin), parole_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Parole Measure by State") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "State", y = "Support for Parole Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(state_bin), ambulance_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Ambulance Measure by State") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "State", y = "Support for Ambulance Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+ggplot(final_sm, aes(factor(state_bin), clinic_Support)) + geom_boxplot(aes(fill = factor(treat))) +
+ggtitle("Support for Clinic Measure by State") + theme(axis.text.x  = element_text(angle=90)) +
+  labs(x = "State", y = "Support for Clinic Measure") +
+scale_fill_discrete(name="Treatment", labels=c("control", "treatment"))#, breaks=c(0, 1, 2))
+
+```
+
+
+## Models with Single Measure Support as Outcome
+
+Let's start by looking only at the parole measure.
+
+```{r Models_SingleMeasure_parole}
+mod_parole_simple <- lm(parole_Support ~ treat, data = final_sm)
+mod_parole_party1 <- lm(parole_Support ~ treat + party, data = final_sm)
+mod_parole_party2 <- lm(parole_Support ~ treat + party + treat:party, data = final_sm)
+mod_parole_partyStrength1 <- lm(parole_Support ~ treat + party + partyStrength, data = final_sm)
+mod_parole_partyStrength2 <- lm(parole_Support ~ treat + party + partyStrength + treat:party + treat:partyStrength + party:partyStrength + treat:party:partyStrength, data = final_sm)
+mod_parole_education1 <- lm(parole_Support ~ treat + education, data = final_sm)
+mod_parole_education2 <- lm(parole_Support ~ treat + education +treat:education, data = final_sm)
+mod_parole_income1 <- lm(parole_Support ~ treat + income, data = final_sm)
+mod_parole_income2 <- lm(parole_Support ~ treat + income + treat:income, data = final_sm)
+mod_parole_age1 <- lm(parole_Support ~ treat + age, data = final_sm)
+mod_parole_age2 <- lm(parole_Support ~ treat + age + treat:age, data = final_sm)
+mod_parole_gender1 <- lm(parole_Support ~ treat + gender, data = final_sm)
+mod_parole_gender2 <- lm(parole_Support ~ treat + gender + treat:gender, data = final_sm)
+mod_parole_voting1 <- lm(parole_Support ~ treat + voting, data = final_sm)
+mod_parole_voting2 <- lm(parole_Support ~ treat + voting + treat:voting, data = final_sm)
+mod_parole_block1 <- lm(parole_Support ~ treat + block, data = final_sm)
+mod_parole_block2 <- lm(parole_Support ~ treat + block +treat:block, data = final_sm)
+
+stargazer(
+  mod_parole_simple, mod_parole_party1, mod_parole_party2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_parole_simple, mod_parole_partyStrength1, mod_parole_partyStrength2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_parole_simple, mod_parole_block1, mod_parole_block2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_parole_simple, mod_parole_education1, mod_parole_education2,
+  type = 'text',
+  header=F
+  )
+stargazer(
+  mod_parole_simple, mod_parole_income1,  mod_parole_income2,
+  type = 'text',
+  header=F
+  )
+stargazer(
+  mod_parole_simple, mod_parole_voting1, mod_parole_voting2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_parole_simple, mod_parole_age1, mod_parole_age2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_parole_simple, mod_parole_gender1, mod_parole_gender2,
+  type = 'text',
+  header=F
+  )
+
+```
+
+>The most interesting is voting habits. Being a more engaged voter is an indicator of how you will vote. But, taking away the variance of voting habits does not make the treatment effect more pronounced.
+
+Now let's do the same models with the Clinic measure.
+
+```{r Models_SingleMeasure_clinic}
+
+mod_clinic_simple <- lm(clinic_Support ~ treat, data = final_sm)
+mod_clinic_party1 <- lm(clinic_Support ~ treat + party, data = final_sm)
+mod_clinic_party2 <- lm(clinic_Support ~ treat + party + treat:party, data = final_sm)
+mod_clinic_partyStrength1 <- lm(clinic_Support ~ treat + party + partyStrength, data = final_sm)
+mod_clinic_partyStrength2 <- lm(clinic_Support ~ treat + party + partyStrength + treat:party + treat:partyStrength + party:partyStrength + treat:party:partyStrength, data = final_sm)
+mod_clinic_education1 <- lm(clinic_Support ~ treat + education, data = final_sm)
+mod_clinic_education2 <- lm(clinic_Support ~ treat + education +treat:education, data = final_sm)
+mod_clinic_income1 <- lm(clinic_Support ~ treat + income, data = final_sm)
+mod_clinic_income2 <- lm(clinic_Support ~ treat + income + treat:income, data = final_sm)
+mod_clinic_age1 <- lm(clinic_Support ~ treat + age, data = final_sm)
+mod_clinic_age2 <- lm(clinic_Support ~ treat + age + treat:age, data = final_sm)
+mod_clinic_gender1 <- lm(clinic_Support ~ treat + gender, data = final_sm)
+mod_clinic_gender2 <- lm(clinic_Support ~ treat + gender + treat:gender, data = final_sm)
+mod_clinic_voting1 <- lm(clinic_Support ~ treat + voting, data = final_sm)
+mod_clinic_voting2 <- lm(clinic_Support ~ treat + voting + treat:voting, data = final_sm)
+mod_clinic_block1 <- lm(clinic_Support ~ treat + block, data = final_sm)
+mod_clinic_block2 <- lm(clinic_Support ~ treat + block +treat:block, data = final_sm)
+
+stargazer(
+  mod_clinic_simple, mod_clinic_party1, mod_clinic_party2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_clinic_simple, mod_clinic_partyStrength1, mod_clinic_partyStrength2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_clinic_simple, mod_clinic_block1, mod_clinic_block2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_clinic_simple, mod_clinic_education1, mod_clinic_education2,
+  type = 'text',
+  header=F
+  )
+stargazer(
+  mod_clinic_simple, mod_clinic_income1,  mod_clinic_income2,
+  type = 'text',
+  header=F
+  )
+stargazer(
+  mod_clinic_simple, mod_clinic_voting1, mod_clinic_voting2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_clinic_simple, mod_clinic_age1, mod_clinic_age2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_clinic_simple, mod_clinic_gender1, mod_clinic_gender2,
+  type = 'text',
+  header=F
+  )
+
+```
+
+Finally, we can take a look at the ambulance measure.
+
+```{r Models_SingleMeasure_ambulance}
+mod_ambulance_simple <- lm(ambulance_Support ~ treat, data = final_sm)
+mod_ambulance_party1 <- lm(ambulance_Support ~ treat + party, data = final_sm)
+mod_ambulance_party2 <- lm(ambulance_Support ~ treat + party + treat:party, data = final_sm)
+mod_ambulance_partyStrength1 <- lm(ambulance_Support ~ treat + party + partyStrength, data = final_sm)
+mod_ambulance_partyStrength2 <- lm(ambulance_Support ~ treat + party + partyStrength + treat:party + treat:partyStrength + party:partyStrength + treat:party:partyStrength, data = final_sm)
+mod_ambulance_education1 <- lm(ambulance_Support ~ treat + education, data = final_sm)
+mod_ambulance_education2 <- lm(ambulance_Support ~ treat + education +treat:education, data = final_sm)
+mod_ambulance_income1 <- lm(ambulance_Support ~ treat + income, data = final_sm)
+mod_ambulance_income2 <- lm(ambulance_Support ~ treat + income + treat:income, data = final_sm)
+mod_ambulance_age1 <- lm(ambulance_Support ~ treat + age, data = final_sm)
+mod_ambulance_age2 <- lm(ambulance_Support ~ treat + age + treat:age, data = final_sm)
+mod_ambulance_gender1 <- lm(ambulance_Support ~ treat + gender, data = final_sm)
+mod_ambulance_gender2 <- lm(ambulance_Support ~ treat + gender + treat:gender, data = final_sm)
+mod_ambulance_voting1 <- lm(ambulance_Support ~ treat + voting, data = final_sm)
+mod_ambulance_voting2 <- lm(ambulance_Support ~ treat + voting + treat:voting, data = final_sm)
+mod_ambulance_block1 <- lm(ambulance_Support ~ treat + block, data = final_sm)
+mod_ambulance_block2 <- lm(ambulance_Support ~ treat + block +treat:block, data = final_sm)
+
+stargazer(
+  mod_ambulance_simple, mod_ambulance_party1, mod_ambulance_party2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_ambulance_simple, mod_ambulance_partyStrength1, mod_ambulance_partyStrength2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_ambulance_simple, mod_ambulance_block1, mod_ambulance_block2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_ambulance_simple, mod_ambulance_education1, mod_ambulance_education2,
+  type = 'text',
+  header=F
+  )
+stargazer(
+  mod_ambulance_simple, mod_ambulance_income1,  mod_ambulance_income2,
+  type = 'text',
+  header=F
+  )
+stargazer(
+  mod_ambulance_simple, mod_ambulance_voting1, mod_ambulance_voting2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_ambulance_simple, mod_ambulance_age1, mod_ambulance_age2,
+  type = 'text',
+  header=F
+  )
+
+stargazer(
+  mod_ambulance_simple, mod_ambulance_gender1, mod_ambulance_gender2,
+  type = 'text',
+  header=F
+  )
+
+```
+
+>This ambulance measure seems to have the largest treatment effect.
+
+## Models with Expanded Dataset
+
+First we need to create the expanded dataset. We a new dataset with three new variables: `measure`, which save the measure and attrite information since for we are collapsing three columns into one, `support`, which is the value of the support for each of the three measures and `attrite`, which is a 1/0 indicator for whether the person was an attritor for each of the three measures.
+
+```{r create_Expanded_Dataset}
+#Expand each responseId into three and create `measure` and `support` variables.
+final_expanded <- melt(final_sm,
+                       id.vars = "responseId",
+                       measure.vars = c("parole_Support", "ambulance_Support", "clinic_Support"),
+                       variable.name = "measure",
+                       value.name = "support")
+#Keep only the variables we are still using.
+final_reduced <- final_sm[, list(responseId,
+                                 treat,
+                                 block,
+                                 age,
+                                 gender,
+                                 education,
+                                 income,
+                                 voting,
+                                 party,
+                                 partyStrength)]
+#Merge the kept variables with the expanded dataset.
+final_expanded <- merge(final_expanded, final_reduced, by = "responseId")
+  
+summary(final_expanded)
+
+
+```
+
+```{r create_Expanded_Dataset_pilotOnly}
+summary(pilot_sm)
+#Expand each responseId into three and create `measure` and `support` variables.
+pilot_expanded <- melt(pilot_sm,
+                       id.vars = "responseId",
+                       measure.vars = c("parole_Support", "ambulance_Support", "clinic_Support"),
+                       variable.name = "measure",
+                       value.name = "support")
+#Keep only the variables we are still using.
+pilot_reduced <- pilot_sm[, list(responseId,
+                                 treat,
+                                 age,
+                                 gender,
+                                 education,
+                                 income,
+                                 voting,
+                                 party,
+                                 partyStrength)]
+#Merge the kept variables with the expanded dataset.
+pilot_expanded <- merge(pilot_expanded, pilot_reduced, by = "responseId")
+  
+summary(pilot_expanded)
+
+
+```
+
+### Dataviz with the extended dataset
+
+
+```{r plot_covariates_voting_allMeasures}
+
+treat.labs <- c("control", "treatment")
+names(treat.labs) <- c(0, 1)
+
+measure.labs <- c("parole", "ambulance", "clinic")
+names(measure.labs) <- c("parole_Support", "ambulance_Support", "clinic_Support")
+
+
+final_expanded %>% 
+  ggplot(aes(x=voting,y=support, fill=as.factor(treat))) +
+  geom_boxplot() +
+  xlab("Voting Habits")+ 
+  facet_wrap(~measure,ncol = 3,labeller = labeller(measure=measure.labs)) +
+  scale_fill_discrete(name="Treatment", labels=c("control", "treatment")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+```{r plot_covariates_party_allMeasures}
+measure.labs <- c("parole", "ambulance", "clinic")
+names(measure.labs) <- c("parole_Support", "ambulance_Support", "clinic_Support")
+
+
+final_expanded %>% 
+  filter(party != 'Other') %>%
+  ggplot(aes(x=party,y=support, fill=as.factor(treat))) +
+  geom_boxplot() +
+  xlab("Political Party")+ 
+  facet_wrap(~measure,ncol = 3,labeller = labeller(measure=measure.labs)) +
+  scale_fill_discrete(name="", labels=c("control", "treatment")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r plot_covariates_party_allMeasures_pilot}
+measure.labs <- c("parole", "ambulance", "clinic")
+names(measure.labs) <- c("parole_Support", "ambulance_Support", "clinic_Support")
+
+
+pilot_expanded %>% 
+  filter(party != 'Other') %>%
+  ggplot(aes(x=party,y=support, fill=as.factor(treat))) +
+  geom_boxplot() +
+  xlab("Political Party")+ 
+  facet_wrap(~measure,ncol = 3,labeller = labeller(measure=measure.labs)) +
+  scale_fill_discrete(name="", labels=c("control", "treatment")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r support_distribution_allMeasures}
+ggplot(final_expanded, aes(x=support)) +
+  geom_histogram(data = final_expanded[treat == 0], aes(fill = as.factor(treat)), alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = final_expanded[treat == 1], aes(fill = as.factor(treat)), alpha = 0.5, binwidth = 2.5) +
+  scale_fill_manual(name="",values=c("coral2","darkturquoise"),labels=c("control","treatment")) +
+  facet_wrap(~measure,ncol = 3,labeller = labeller(measure=measure.labs)) +
+  ggtitle("Distribution of Support for Each Ballot Measure")
+
+```
+
+```{r support_distribution_allMeasures_byParty}
+ggplot(final_expanded, aes(x=support)) +
+  geom_histogram(data = final_expanded[treat == 0], aes(fill = as.factor(treat)), alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = final_expanded[treat == 1], aes(fill = as.factor(treat)), alpha = 0.5, binwidth = 2.5) +
+  scale_fill_manual(name="",values=c("coral2","darkturquoise"),labels=c("control","treatment")) +
+  facet_wrap(party~measure,ncol = 3,labeller = labeller(measure=measure.labs))
+
+```
+
+```{r support_distribution_allMeasures_pilot}
+ggplot(pilot_expanded, aes(x=support)) +
+  geom_histogram(data = pilot_expanded[treat == 0], aes(fill = as.factor(treat)), alpha = 0.5, binwidth = 2.5) +
+  geom_histogram(data = pilot_expanded[treat == 1], aes(fill = as.factor(treat)), alpha = 0.5, binwidth = 2.5) +
+  scale_fill_manual(name="",values=c("coral2","darkturquoise"),labels=c("control","treatment")) +
+  facet_wrap(~measure,ncol = 3,labeller = labeller(measure=measure.labs)) +
+  ggtitle("Distribution of Support for Each Ballot Measure")
+
+```
+
+### Now we can create the models.
+
+```{r model_expanded_dataset}
+mod_clustered1 <- lm(support ~ treat + measure, data = final_expanded)
+#Add clustered standard errors
+mod_clustered1$vcovCL1_ <- vcovCL(mod_clustered1, cluster = final_expanded[ , responseId])
+coeftest(mod_clustered1, mod_clustered1$vcovCL1_)
+
+mod_clustered2 <- lm(support ~ treat + measure + treat:measure, data = final_expanded)
+#Add clustered standard errors
+mod_clustered2$vcovCL1_ <- vcovCL(mod_clustered2, cluster = final_expanded[ , responseId])
+coeftest(mod_clustered2, mod_clustered2$vcovCL1_)
+
+
+stargazer(
+  mod_clustered1, mod_clustered2,
+  type = 'text',
+  se=list(sqrt(diag(mod_clustered1$vcovCL1_)),sqrt(diag(mod_clustered2$vcovCL1_))),
+  header=F
+  )
+
+```
+
+## Power Calculation
+
+Using the standard error for each measure, we can compute the power of this experiment. We can also compute the power based on the expanded dataset, which has three times the n. But, for the expanded dataset, the mean of the support variable is somewhat meaningless because it includes all three measures. Here are the four models we are interested in: 
+
+- mod_parole_simple
+- mod_clinic_simple
+- mod_ambulance_simple
+- mod_clustered1
+
+We need the treatment mean, control mean, standard errors, sample size for each model.
+
+```{r power_calculations}
+#Parole info:
+meanTreat_parole <- mean(final_sm[treat == 1, parole_Support], na.rm = T)
+meanTreat_parole
+meanControl_parole <- mean(final_sm[treat == 0, parole_Support], na.rm = T)
+meanControl_parole
+sampleSize_parole <- length(final_sm[parole_Attrite == 0, parole_Support])/2
+sampleSize_parole
+sigma(mod_parole_simple)
+
+#Ambulance info:
+meanTreat_ambulance <- mean(final_sm[treat == 1, ambulance_Support], na.rm = T)
+meanTreat_ambulance
+meanControl_ambulance <- mean(final_sm[treat == 0, ambulance_Support], na.rm = T)
+meanControl_ambulance
+sampleSize_ambulance <- length(final_sm[ambulance_Attrite == 0, ambulance_Support])/2
+sampleSize_ambulance
+sigma(mod_ambulance_simple)
+
+#Clinic info:
+meanTreat_clinic <- mean(final_sm[treat == 1, clinic_Support], na.rm = T)
+meanTreat_clinic
+meanControl_clinic <- mean(final_sm[treat == 0, clinic_Support], na.rm = T)
+meanControl_clinic
+sampleSize_clinic <- length(final_sm[clinic_Attrite == 0, clinic_Support])/2
+sampleSize_clinic
+sigma(mod_clinic_simple)
+
+#Expanded info:
+meanTreat_expanded <- mean(final_expanded[treat == 1, support], na.rm = T)
+meanTreat_expanded
+meanControl_expanded <- mean(final_expanded[treat == 0, support], na.rm = T)
+meanControl_expanded
+sampleSize_expanded <- nrow(final_expanded[!is.na(final_expanded$support)])/2
+sampleSize_expanded
+sigma(mod_clustered1)
+
+```
+
+Using the power calculation website, https://www.stat.ubc.ca/~rollin/stats/ssize/n2.html, here are the power answers for alpha=0.05.
+
+parole: 0.03
+ambulance: 0.31
+clinic: 0.21
+expanded: 0.37
+
+```{r power_Calculation}
+#Compute components for power of parole measure.
+mu_parole_tx <- final_sm[treat==1, mean(parole_Support, na.rm=T)] 
+mu_parole_control <- final_sm[treat==0, mean(parole_Support, na.rm=T)]
+parole_respondents1 <- final_sm[!is.na(parole_Support) & treat==1, .N]
+parole_respondents0 <- final_sm[!is.na(parole_Support) & treat==0, .N]
+parole_variance <- var(final_sm[,parole_Support], na.rm=T)
+SE_parole <- summary(mod_parole_simple)$coefficients['treat',2]
+SD_parole <- sqrt(parole_variance) #sqrt(parole_respondents)*SE_parole
+ES_parole <- (mu_parole_tx - mu_parole_control)/SD_parole
+
+#Compute components for power of ambulance measure.
+mu_ambulance_tx <- final_sm[treat==1, mean(ambulance_Support, na.rm=T)] 
+mu_ambulance_control <- final_sm[treat==0, mean(ambulance_Support, na.rm=T)]
+ambulance_respondents1 <- final_sm[!is.na(ambulance_Support) & treat==1, .N]
+ambulance_respondents0 <- final_sm[!is.na(ambulance_Support) & treat==0, .N]
+ambulance_variance <- var(final_sm[,ambulance_Support], na.rm=T)
+# SE_parole <- summary(mod_parole_simple)$coefficients['treat',2]
+SD_ambulance <- sqrt(ambulance_variance) #sqrt(parole_respondents)*SE_parole
+ES_ambulance <- (mu_ambulance_tx - mu_ambulance_control)/SD_ambulance
+
+#Compute components for power of clinic measure.
+mu_clinic_tx <- final_sm[treat==1, mean(clinic_Support, na.rm=T)] 
+mu_clinic_control <- final_sm[treat==0, mean(clinic_Support, na.rm=T)]
+clinic_respondents1 <- final_sm[!is.na(clinic_Support) & treat==1, .N]
+clinic_respondents0 <- final_sm[!is.na(clinic_Support) & treat==0, .N]
+clinic_variance <- var(final_sm[,clinic_Support], na.rm=T)
+# SE_parole <- summary(mod_parole_simple)$coefficients['treat',2]
+SD_clinic <- sqrt(clinic_variance) #sqrt(parole_respondents)*SE_parole
+ES_clinic <- (mu_clinic_tx - mu_clinic_control)/SD_clinic
+
+compute_power <- function(n1,n2,d,sig.level = 0.05,power) {
+  computed_power = pwr.t2n.test(n1 = n1,n2 = n2,d = d,sig.level = sig.level, power = NULL)
+  return(computed_power)
+}
+
+compute_ES <- function(n1,n2,d,sig.level = 0.05,power) {
+  computed_ES = pwr.t2n.test(n1 = n1, n2 = n2, d = NULL, sig.level = 0.05, power = power)
+  return(computed_ES)
+}
+
+compute_n <- function(n1,n2,d,sig.level = 0.05,power) {
+  computed_n = pwr.t.test (n=NULL, d = d, power = power, type = "paired")
+  return(computed_n)
+}
+
+parole_power <- compute_power(parole_respondents1,parole_respondents0,ES_parole, 0.05, .8)
+parole_ES <- compute_ES(parole_respondents1,parole_respondents0,ES_parole, 0.05, .8)
+parole_n <- compute_n(parole_respondents1,parole_respondents0,ES_parole, 0.05, .8)
+
+ambulance_power <- compute_power(ambulance_respondents1,ambulance_respondents0,ES_ambulance, 0.05, .8)
+ambulance_ES <- compute_ES(ambulance_respondents1,ambulance_respondents0,ES_ambulance, 0.05, .8)
+ambulance_n <- compute_n(ambulance_respondents1,ambulance_respondents0,ES_ambulance, 0.05, .8)
+
+clinic_power <- compute_power(clinic_respondents1,clinic_respondents0,ES_clinic, 0.05, .8)
+clinic_ES <- compute_ES(clinic_respondents1,clinic_respondents0,ES_clinic, 0.05, .8)
+clinic_n <- compute_n(clinic_respondents1,clinic_respondents0,ES_clinic, 0.05, .8)
+
+parole_power
+parole_ES
+parole_n
+
+ambulance_power
+ambulance_ES
+ambulance_n
+
+clinic_power
+clinic_ES
+clinic_n
+
+mu_parole_tx 
+mu_parole_control
+mu_clinic_tx 
+mu_clinic_control
+mu_ambulance_tx 
+mu_ambulance_control
+
+```
+
+```{r powerParole_byParty}
+
+dem_only <- final_sm[party == "Democrat"]
+mu_parole_dem_tx <- dem_only[treat==1, mean(parole_Support, na.rm=T)] 
+mu_parole_dem_control <- dem_only[treat==0, mean(parole_Support, na.rm=T)]
+parole_dem_respondents1 <- dem_only[!is.na(parole_Support) & treat==1, .N]
+parole_dem_respondents0 <- dem_only[!is.na(parole_Support) & treat==0, .N]
+parole_dem_variance <- var(dem_only[,parole_Support], na.rm=T)
+SE_parole_dem <- summary(mod_parole_simple)$coefficients['treat',2]
+SD_parole_dem <- sqrt(parole_dem_variance) #sqrt(parole_respondents)*SE_parole
+ES_parole_dem <- (mu_parole_dem_tx - mu_parole_dem_control)/SD_parole_dem
+# summary(dem_only)
+
+parole_power_dem <- compute_power(parole_dem_respondents1,parole_dem_respondents0,ES_parole_dem, 0.05, .8)
+parole_ES_dem <- compute_ES(parole_dem_respondents1,parole_dem_respondents0,ES_parole_dem, 0.05, .8)
+parole_n_dem <- compute_n(parole_dem_respondents1,parole_dem_respondents0,ES_parole_dem, 0.05, .8)
+
+parole_power_dem
+parole_ES_dem
+parole_n_dem
+
+SD_parole_dem
+
+```
+
+```{r pilot_Analysis}
+
+mod_pilot_parole <- lm(parole_Support ~ treat, data = pilot_sm)
+mod_pilot_ambulance <- lm(ambulance_Support ~ treat, data = pilot_sm)
+mod_pilot_clinic <- lm(clinic_Support ~ treat, data = pilot_sm)
+
+stargazer(
+  mod_pilot_parole, mod_pilot_ambulance, mod_pilot_clinic,
+  type = 'text',
+  header=F
+  )
+
+
+```
+
+```{r pilot_powerAnalysis}
+#Parole info:
+meanTreat_Pilot_parole <- mean(pilot_sm[treat == 1, parole_Support], na.rm = T)
+meanTreat_Pilot_parole
+meanControl_Pilot_parole <- mean(pilot_sm[treat == 0, parole_Support], na.rm = T)
+meanControl_Pilot_parole
+sampleSize_Pilot_parole <- 31
+sampleSize_Pilot_parole
+sigma(mod_pilot_parole)
+
+#Ambulance info:
+meanTreat_Pilot_ambulance <- mean(pilot_sm[treat == 1, ambulance_Support], na.rm = T)
+meanTreat_Pilot_ambulance
+meanControl_Pilot_ambulance <- mean(pilot_sm[treat == 0, ambulance_Support], na.rm = T)
+meanControl_Pilot_ambulance
+sampleSize_Pilot_ambulance <- 31
+sampleSize_Pilot_ambulance
+sigma(mod_pilot_ambulance)
+
+#Clinic info:
+meanTreat_Pilot_clinic <- mean(pilot_sm[treat == 1, clinic_Support], na.rm = T)
+meanTreat_Pilot_clinic
+meanControl_Pilot_clinic <- mean(pilot_sm[treat == 0, clinic_Support], na.rm = T)
+meanControl_Pilot_clinic
+sampleSize_Pilot_clinic <- 31
+sampleSize_Pilot_clinic
+sigma(mod_pilot_clinic)
+
+#Compute components for power of parole measure.
+mu_parole_tx_pilot <- pilot_sm[treat==1, mean(parole_Support, na.rm=T)] 
+mu_parole_control_pilot <- pilot_sm[treat==0, mean(parole_Support, na.rm=T)]
+parole_respondents1_pilot <- pilot_sm[!is.na(parole_Support) & treat==1, .N]
+parole_respondents0_pilot <- pilot_sm[!is.na(parole_Support) & treat==0, .N]
+parole_variance_pilot <- var(pilot_sm[,parole_Support], na.rm=T)
+SD_parole_pilot <- sqrt(parole_variance_pilot) 
+ES_parole_pilot <- (mu_parole_tx_pilot - mu_parole_control_pilot)/SD_parole_pilot
+
+#Compute components for power of ambulance measure.
+mu_ambulance_tx_pilot <- pilot_sm[treat==1, mean(ambulance_Support, na.rm=T)] 
+mu_ambulance_control_pilot <- pilot_sm[treat==0, mean(ambulance_Support, na.rm=T)]
+ambulance_respondents1_pilot <- pilot_sm[!is.na(ambulance_Support) & treat==1, .N]
+ambulance_respondents0_pilot <- pilot_sm[!is.na(ambulance_Support) & treat==0, .N]
+ambulance_variance_pilot <- var(pilot_sm[,ambulance_Support], na.rm=T)
+SD_ambulance_pilot <- sqrt(ambulance_variance_pilot) 
+ES_ambulance_pilot <- (mu_ambulance_tx_pilot - mu_ambulance_control_pilot)/SD_ambulance_pilot
+
+#Compute components for power of clinic measure.
+mu_clinic_tx_pilot <- pilot_sm[treat==1, mean(clinic_Support, na.rm=T)] 
+mu_clinic_control_pilot <- pilot_sm[treat==0, mean(clinic_Support, na.rm=T)]
+clinic_respondents1_pilot <- pilot_sm[!is.na(clinic_Support) & treat==1, .N]
+clinic_respondents0_pilot <- pilot_sm[!is.na(clinic_Support) & treat==0, .N]
+clinic_variance_pilot <- var(pilot_sm[,clinic_Support], na.rm=T)
+SD_clinic_pilot <- sqrt(clinic_variance_pilot) 
+ES_clinic_pilot <- (mu_clinic_tx_pilot - mu_clinic_control_pilot)/SD_clinic_pilot
+
+parole_power_pilot <- compute_power(parole_respondents1_pilot,parole_respondents0_pilot,ES_parole_pilot, 0.05, .8)
+parole_ES_pilot <- compute_ES(parole_respondents1_pilot,parole_respondents0_pilot,ES_parole_pilot, 0.05, .8)
+parole_n_pilot <- compute_n(parole_respondents1_pilot,parole_respondents0_pilot,ES_parole_pilot, 0.05, .8)
+
+ambulance_power_pilot <- compute_power(ambulance_respondents1_pilot,ambulance_respondents0_pilot,ES_ambulance_pilot, 0.05, .8)
+ambulance_ES_pilot <- compute_ES(ambulance_respondents1_pilot,ambulance_respondents0_pilot,ES_ambulance_pilot, 0.05, .8)
+ambulance_n_pilot <- compute_n(ambulance_respondents1_pilot,ambulance_respondents0_pilot,ES_ambulance_pilot, 0.05, .8)
+
+clinic_power_pilot <- compute_power(clinic_respondents1_pilot,clinic_respondents0_pilot,ES_clinic_pilot, 0.05, .8)
+clinic_ES_pilot <- compute_ES(clinic_respondents1_pilot,clinic_respondents0_pilot,ES_clinic_pilot, 0.05, .8)
+clinic_n_pilot <- compute_n(clinic_respondents1_pilot,clinic_respondents0_pilot,ES_clinic_pilot, 0.05, .8)
+
+parole_power_pilot
+parole_ES_pilot
+parole_n_pilot
+
+ambulance_power_pilot
+ambulance_ES_pilot
+ambulance_n_pilot
+
+clinic_power_pilot
+clinic_ES_pilot
+clinic_n_pilot
+
+mu_parole_tx_pilot 
+mu_parole_control_pilot
+mu_clinic_tx_pilot
+mu_clinic_control_pilot
+mu_ambulance_tx_pilot
+mu_ambulance_control_pilot
+
+```
+
+```{r power_data_for_plots}
+
+get_n_values <- function(d, power_values) {
+  n_values <- c()
+  power_vals <- c()
+  for (power_value in power_values) {
+    power_value
+    power_test <- pwr.t.test(n=NULL, d = d, power = power_value, type = "paired")
+    if(power_test$n < 500) {
+      n_values <- append(n_values,power_test$n)
+      power_vals <- append(power_vals,power_value)
+    }
+  } 
+  return(data.table(n_values,power_vals))
+}
+
+power_values <- seq(from=.1, to=1, by=.05)
+parole_power_values <- seq(from=.01, to=.5, by=.01)
+#The sample size for parole are too high, so don't plot them. Effect size is too tiny.
+# pwr.t.test(n=NULL, d = parole_n$d, power = .06, type = "paired")
+# parolePowerPlot <- get_n_values(parole_n$d,parole_power_values)
+# parolePowerPlot[,measure := "parole"]
+parolePowerPlot <- data.table(n_values = c(50,(parole_power$n1+parole_power$n2)/2,500),
+                              power_vals = c(parole_power$power*.99,
+                                             parole_power$power,
+                                             parole_power$power*1.01),
+                              measure = c("parole","parole","parole"),
+                              pilot = c("0","0","0"))
+parolePowerPlot
+
+clinicPowerPlot <- get_n_values(clinic_n$d,power_values)
+clinicPowerPlot[,measure := "clinic"][, pilot := "0"]
+
+ambulancePowerPlot <- get_n_values(ambulance_n$d,power_values)
+ambulancePowerPlot[,measure := "ambulance"][, pilot := "0"]
+
+parolePowerPlot_pilot <- get_n_values(parole_n_pilot$d,power_values)
+parolePowerPlot_pilot[,measure := "parole_pilot"][, pilot := "1"]
+
+clinicPowerPlot_pilot <- get_n_values(clinic_n_pilot$d,power_values)
+clinicPowerPlot_pilot[,measure := "clinic_pilot"][, pilot := "1"]
+
+ambulancePowerPlot_pilot <- get_n_values(ambulance_n_pilot$d,power_values)
+ambulancePowerPlot_pilot[,measure := "ambulance_pilot"][, pilot := "1"]
+
+power_plot <- rbind(parolePowerPlot,
+                    ambulancePowerPlot,
+                    clinicPowerPlot,
+                    parolePowerPlot_pilot,
+                    ambulancePowerPlot_pilot,
+                    clinicPowerPlot_pilot)
+```
+
+```{r power_plots}
+p <- 0.8
+
+ggplot(data=power_plot, aes(x=n_values, y=power_vals, group=measure)) +
+  geom_line(aes(color=measure, linetype=pilot)) + 
+  labs(x = "Sample Size", y = "Power") +
+  scale_color_manual(breaks=c("parole","ambulance","clinic",
+                              "parole_pilot", "ambulance_pilot", "clinic_pilot"),
+                     values=c("darkorchid3", "deeppink2", "deepskyblue3",
+                              "darkorchid3", "deeppink2", "deepskyblue3")) +
+  guides(color=guide_legend("Measure"), linetype=F) +
+  geom_abline(slope = 0, intercept = .8, color = "red") +
+  geom_text(aes(0,p,label = p, vjust = -1)) +
+
+  geom_point(aes(x=153, y=.05), color="darkorchid3") +
+  geom_point(aes(x=154, y=.332), color="deeppink2") +
+  geom_point(aes(x=152, y=.223), color="deepskyblue3") +
+  geom_point(aes(x=12, y=.07), color="darkorchid3") +
+  geom_point(aes(x=12, y=.263), color="deeppink2") +
+  geom_point(aes(x=12, y=.148), color="deepskyblue3") +
+  ggtitle("Power Estimates")
+
+```
+
+
+| measure  	| sample size (T/C)	| effect size  	| power  	| sample for \n 80% power  	|
+|---	|---	|---	|---	|---	|
+| parole pilot  	| `r parole_power_pilot$n1`/`r parole_power_pilot$n2`  	| `r round(parole_n_pilot$d,4)`  	|  `r round(parole_power_pilot$power,3)` | `r round(parole_n_pilot$n)`  	|
+| ambulance pilot  	| `r parole_power_pilot$n1`/`r parole_power_pilot$n2`  	|  `r round(ambulance_n_pilot$d,4)` 	| `r round(ambulance_power_pilot$power,3)` 	|  `r round(ambulance_n_pilot$n)` 	|
+| clinic pilot  	| `r parole_power_pilot$n1`/`r parole_power_pilot$n2`  	| `r round(clinic_n_pilot$d,4)`  	| `r round(clinic_power_pilot$power,3)`	| `r round(clinic_n_pilot$n)`  	|
+| parole  	| `r parole_power$n1`/`r parole_power$n2`  	| `r round(parole_n$d,4)`  	| `r round(parole_power$power,3)`	| `r as.character(round(parole_n$n))`  	|
+| ambulance  	| `r ambulance_power$n1`/`r ambulance_power$n2`	| `r round(ambulance_n$d,4)`  	|  `r round(ambulance_power$power,3)`	| `r round(ambulance_n$n)`	|
+| clinic  	|  `r clinic_power$n1`/`r clinic_power$n2`	| `r round(clinic_n$d,4)`  	| `r round(clinic_power$power,3)`  	| `r round(clinic_n$n)`	|
+
