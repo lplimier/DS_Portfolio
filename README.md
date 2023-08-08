@@ -41,7 +41,7 @@
 
 *****
 
-## [What Scientists Have Wikipedia Pages: As study of the missing scientists](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Wiki_Gender)
+## [What Scientists Have Wikipedia Pages: A study of the missing scientists](https://github.com/lplimier/Data_Science_Portfolio/tree/master/Wiki_Gender)
 
 ![Scientists Published Papers](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/published_continent_gender.png)
 
@@ -57,4 +57,5 @@
 
 - Created a simple text game in Python
 - Player navigates through rooms in a bakery to complete customer orders and get points!
+- Selected for MIDS Python showcase of best submissions
 - **keywords**(Object Oriented Programming, Python)
