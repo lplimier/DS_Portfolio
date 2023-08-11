@@ -15,7 +15,7 @@
 - Used OpenPose model and language modeling to create novel dance choreography
 - Trained KMeans and GPT2 language models on keypoints from video data
 - Selected as one of top eight projects for MIDS Capstone Showcase
-- **keywords**(GPT2, Deep Learning, Video Processing, Language Models, K-Means, Python)
+- **keywords** (GPT2, Deep Learning, Video Processing, Language Models, K-Means, Python)
 
 *****
 
@@ -27,7 +27,7 @@
 - Used Qualtrics to administer a precisely designed experiment
 - Analyzed survey results in R to obtain effect size of treatment condition (in this case, the provision of additional information)
 - Used linear regression to explore the treatment effect and influence of covariates
-- **keywords**(Randomized Control Trial, Experimental Design, Power, R, Regression, Covariates)
+- **keywords** (Randomized Control Trial, Experimental Design, Power, R, Regression, Covariates)
 
 *****
 
@@ -37,7 +37,7 @@
 
 - Used CNN model to predict the gender of politicians based on how people responded to the politicians' posts on Facebook
 - Explored adding sentiment analysis as a feature
-- **keywords**(Natural Language Processing, Convolutional Neural Networks, Sentiment Analysis, LaTex)
+- **keywords** (Natural Language Processing, Convolutional Neural Networks, Sentiment Analysis, LaTex, Python)
 
 *****
 
@@ -47,7 +47,7 @@
 
 - Analysis of dataset of computer scientists
 - Explored correlation between gender and other characteristics of the scientists and whether the scientists have Wikipedia pages
-- **keywords**(Pandas, Data Visualization)
+- **keywords** (Python, Pandas, Data Visualization, matplotlib, Seaborn)
 
 *****
 
@@ -58,4 +58,4 @@
 - Created a simple text game in Python
 - Player navigates through rooms in a bakery to complete customer orders and get points!
 - Selected for MIDS Python showcase of best submissions
-- **keywords**(Object Oriented Programming, Python)
+- **keywords** (Object Oriented Programming, Python, ascii art)
