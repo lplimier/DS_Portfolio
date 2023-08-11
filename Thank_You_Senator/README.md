@@ -1,4 +1,4 @@
-This project, for a Natural Language Processing course, focused on using a series of convolutional neural network (CNN) models to predict the gender of a US politician based on responses to that politician's Facebook posts. This project was a joint project conducted with a classmate. All code shared here is my own.
+This project, for a Natural Language Processing course, focused on using a series of convolutional neural network (CNN) models to predict the gender of a US politician based on responses to that politician's Facebook posts. This project was a joint project conducted with a classmate. 
 
 The dataset we used contained Facebook posts from 412 politicians (306 men and 96 women) and the direct responses to those posts for a total of 399,037 posts and 13,866,507 repsonses. The goal was to accurately label the responses with "W" or "M" based on whether the response was to the post of a woman or man. 
 
