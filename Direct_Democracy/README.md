@@ -14,6 +14,6 @@ Our analysis appeared to confirm the assumption that political party and the int
 
 We had conducted a small pilot study to determine a target number of participants to reach an 80% power threshold, but because our pilot was so small, the predictions ended up being too low. 
 
-![power-estimates](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/power-estimates.png)
+![power-estimates](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/power_estimates.png)
 
 The dotted lines of the graph above show the predicted power curve based on the pilot study. The solid lines in graph show predicted power curve for our final experiment. The left-hand column of dots shows the actual power for the pilot study and the right hand column of dots are the actual power numbers, which are lower than the predicted power curve because of a treatment/control imbalance. In an ideal world, we would use the full experiment as a robust pilot and target a much larger, more diverse audience for a final study.
