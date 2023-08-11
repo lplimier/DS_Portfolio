@@ -2,4 +2,8 @@ I have dedicated many volunteer hours toward helping voters make an informed vot
 
 We used the actual ballot language for three ballot measures from a recent statewide California election. The control group was provided with just the ballot language and the treatment group was given lists of financial contributors and endorsers both for and against each ballot measure. We were limited in time and resources, but managed to collect several hundred survey responses. We used regression models (in R) to assess whether additional information affected the voter’s level of support for each ballot measure and controlled for covariates including education level, income, political party, intensity of party affiliation, and voting habits.
 
-Our analysis appeared to confirm the assumption that political party and the intensity of party affiliation were strong predictors of support for the measures, but this was not the question we set out to answer. There was a small difference in the level of support of ballot measures for voters receiving additional information. Unfortunately, because of the small sample size, our experiment was underpowered and the treatment effect was statistically insignificant.
+Our analysis appeared to confirm the assumption that political party and the intensity of party affiliation were strong predictors of support for the measures, but this was not the question we set out to answer. There was a small difference in the level of support of ballot measures for voters receiving additional information. 
+
+![distribution-of-support](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/DistributionOfSupport.png)
+
+Unfortunately, because of the small sample size, our experiment was underpowered and the treatment effect was statistically insignificant.
