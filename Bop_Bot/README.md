@@ -8,6 +8,6 @@ We gathered publicly available dance videos and extracted the body keypoints fro
 
 We replaced the original frames of our training dances with the mean pose for the cluster containing that frame. This meant that the dances that were fed into the GPT2 had a limited vocabulary of 52k poses. To make the interface with the GPT2 easier, we assigned a unique, fake 5-letter word to each of the poses in our vocabulary.
 
-After we trained the GPT2 model, we could use it to generate novel dance choreography. To generate a novel dance, we first use the trained kmeans model to predict the cluster assignments for each frame in our user’s inputted video. We translate this into a short snippet of text, which is used as context for the GPT2 text generation model. The model outputs new text that we convert back into video frames. Like we did with the LSTM, we render the new frames as our bopbot dancer to create our second novel dance.
+After we trained the GPT2 model, we could use it to generate novel dance choreography. To generate a novel dance, we first use the trained kmeans model to predict the cluster assignments for each frame in our user’s inputted video. We translate this into a short snippet of text, which is used as context for the GPT2 text generation model. The model outputs new text that we convert back into video frames. Finally, we render the new frames as our bopbot dancer to create a novel dance.
 
 ![GPT2](https://github.com/lplimier/Data_Science_Portfolio/blob/master/Images/GPT2.png)
