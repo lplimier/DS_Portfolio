@@ -4,9 +4,8 @@ Based on our exploration, it appeared that whether a scientist has a Wikipedia p
 
 ![scientists-quoted-in-news](https://github.com/lplimier/DS_Portfolio/blob/master/Images/quoted.png)
 
-We were somewhat surprised to see that the gender distribution was the same for scientists who had a Wikipedia page as it was for the entire dataset.
+There also seemed to be some correlation between gender and the percentage of scientists who had a Wikipedia page. The percentage of males in the full dataset was 68.8% while the percentage of males in the subset of scientists with Wikipedia pages was 86%. The percentage of female scientists also increased from 10.6% in the full dataset to 12.3% among scientists with Wikipedia pages. We obtained the gender label based on gendered first names. Because of this, the difference in gender distribution seems to be more of an indication of the number of gender neutral or unknown first names than it is of the prevalence of one gender over the other.
 
-![scientists-quoted-in-news](https://github.com/lplimier/DS_Portfolio/blob/master/Images/gender_pie_on_wiki.png)
+![scientists-quoted-in-news](https://github.com/lplimier/DS_Portfolio/blob/master/Images/gender_pies.png)
 
-![scientists-quoted-in-news](https://github.com/lplimier/DS_Portfolio/blob/master/Images/gender_pie_all.png)
-
+Read the [full paper](https://github.com/lplimier/DS_Portfolio/blob/master/Wiki_Gender/Python%20W200%20-%20Fall%2C%202018%20-%20Lorrel%2C%20Sheila%2C%20Dan.pdf) to learn more about this project.
