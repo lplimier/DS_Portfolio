@@ -5,6 +5,8 @@
 
 #### [Lorrel Plimier](https://www.linkedin.com/in/lorrel-plimier-b117284a/)
 
+The projects below are a handful of highlights from my coursework while obtaining a Masters in Information and Data Science from U.C. Berkeley.
+
 *****
 *****
 
